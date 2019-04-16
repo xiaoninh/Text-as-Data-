@@ -1,0 +1,449 @@
+---
+title: "Text as Data HW2"
+author: "XH1163"
+date: "3/16/2019"
+output:
+  word_document: default
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r Part1(a)}
+rm(list = ls())
+pr_immigration_resp <- 1/15 #counted by hand
+pr_voter_resp <- 1/15
+pr_aliens_resp <- 1/15
+pr_help_resp <-  1/15
+pr_economy_resp <- 1/15
+pr_immigration_demo <- 1/20
+pr_voter_demo <- 1/20
+pr_aliens_demo <- 0/20
+pr_help_demo <- 4/20
+pr_economy_demo <- 1/20
+pr_resp <- 3/7
+pr_demo <- 4/7
+pr_email_by_resp <- pr_resp*pr_immigration_resp *pr_voter_resp*pr_aliens_resp*pr_help_resp*pr_economy_resp
+pr_email_by_demo <-pr_demo*pr_immigration_demo *pr_voter_demo*pr_aliens_demo*pr_help_demo*pr_economy_demo
+pr_email_by_resp
+pr_email_by_demo
+log(pr_email_by_resp)
+log(pr_email_by_demo)
+```
+
+Laplace smoothing : add one to each count to avoid 0
+```{r Part1(b)}
+pr_immigration_resp <- 2/15 
+pr_voter_resp <- 2/15
+pr_aliens_resp <- 2/15
+pr_help_resp <-  2/15
+pr_economy_resp <- 2/15
+pr_immigration_demo <- 2/20
+pr_voter_demo <- 2/20
+pr_aliens_demo <- 1/20
+pr_help_demo <- 5/20
+pr_economy_demo <- 2/20
+pr_email_by_resp <- pr_resp*pr_immigration_resp *pr_voter_resp*pr_aliens_resp*pr_help_resp*pr_economy_resp
+pr_email_by_demo <- pr_demo*pr_immigration_demo *pr_voter_demo*pr_aliens_demo*pr_help_demo*pr_economy_demo
+pr_email_by_resp
+pr_email_by_demo
+log(pr_email_by_resp)
+log(pr_email_by_demo)
+```
+```{r part2}
+rm(list = ls())
+yelp <- read.csv("yelp.csv")
+yelp <- yelp[c("stars","text")]
+```
+
+```{r 2a}
+median <- median(yelp$stars)
+yelp$label <- ifelse(yelp$stars> median, 'positive',
+                  ifelse(yelp$stars<= median, 'negative','n/a'))
+```
+```{r 2b}
+yelp$anchor <- ifelse(yelp$stars == 5, 'positive',
+                  ifelse(yelp$stars == 1, 'negative','neutral'))
+prop.table(table(yelp$anchor))
+prop.table(table(yelp$label))
+```
+
+```{r 3}
+pos = readLines("positive-words.txt")
+neg = readLines("negative-words.txt")
+```
+Used to lower
+```{r 3a}
+library(stringr)
+for (row in 1:nrow(yelp)) {
+    text <- tolower(yelp[row, 'text'])
+    words <- unlist(str_split(text, " "))
+    pos.matches <- match(words, pos)
+    neg.matches <- match(words, neg)
+    score <- sum(!is.na(pos.matches))-sum(!is.na(neg.matches))
+    yelp[row, 'Score']<-score
+    }
+```
+
+```{r 3b}
+hist(yelp$Score,main = 'Histogram of Sentiment Score')
+```
+Evaluate the performance of your model at identifying positive or negative reviews by creating a confusion matrix with the positive and negative values assigned by the sentiment score (created in 3(a)) on the vertical axis and the binary classifications (“actual label” created in 2(b)) on the horizontal axis. Use this confusion matrix to compute the ac- curacy, precision, recall and F1 score of the sentiment classifier. Report these findings along with the confusion matrix. In terms of accuracy, how would you evaluate the performance of this classifier? (Hint: is there a baseline we can compare it to?)
+```{r 3c}
+yelp$score_label <- ifelse(yelp$Score>= 0, 'positive score',
+                  ifelse(yelp$Score<0, 'negative score','n/a'))
+matrics <- table(yelp$score_label,yelp$label)
+matrics
+acc <- sum(diag(matrics ))/sum(matrics ) # accuracy = (TP + TN) / (TP + FP + TN + FN)
+recall <- matrics [2,2]/sum(matrics [2,]) # recall = TP / (TP + FN)
+precision <- matrics [2,2]/sum(matrics[,2]) # precision = TP / (TP + FP)
+f1 <- 2*(recall*precision)/(recall + precision)
+cat(
+  "Baseline:",max(prop.table(table(yelp$label))),"\n",
+  "Accuracy:",  acc, "\n",
+  "Recall:",  recall, "\n",
+  "Precision:",  precision, "\n",
+  "F1-score:", f1
+)
+
+```
+```{r 3d}
+yelp$PredictedRank[order(yelp$Score,decreasing = TRUE)] <- 1:nrow(yelp)
+yelp$TureRank[order(yelp$stars,decreasing = TRUE)] <- 1:nrow(yelp)
+yelp<-yelp[order(as.numeric(rownames(yelp))), ]
+RankSum_dictionaries=0
+for (row in 1:nrow(yelp)) {
+  difference = abs(yelp[row, 'PredictedRank'] - yelp[row, 'TureRank'])
+  RankSum_dictionaries = RankSum_dictionaries + difference
+  }
+RankSum_dictionaries
+```
+
+```{r 4a}
+library(quanteda)
+library(quanteda.corpora)
+library(readtext)
+library(dplyr)
+
+set.seed(2019)
+prop_train <- 0.8
+index <- 1:nrow(yelp)
+yelp$text <- as.character(yelp$text)
+train_index <- sample(index, ceiling(prop_train*length(index)), replace = FALSE)
+test_index <- index[train_index]
+train_set <- yelp[train_index,]
+test_set <- yelp[test_index,]
+train_dfm <- dfm(train_set$text, stem = TRUE, remove_punct = TRUE, remove = stopwords("english"))
+test_dfm <- dfm(test_set$text, stem = TRUE, remove_punct = TRUE, remove = stopwords("english"))
+
+test_dfm <- dfm_match(test_dfm, features = featnames(train_dfm))
+nb_model <- textmodel_nb(train_dfm, train_set$label, smooth = 1, prior = "uniform")
+predicted_label_uniform <- predict(nb_model, newdata = test_dfm)
+
+# baseline
+baseline_acc <- max(prop.table(table(test_set$label)))
+# get confusion matrix
+matrix <- table(test_set$label, predicted_label_uniform)
+matrix
+nb_acc <- sum(diag(matrix))/sum(matrix) # accuracy = (TP + TN) / (TP + FP + TN + FN)
+nb_recall <- matrix[2,2]/sum(matrix[2,]) # recall = TP / (TP + FN)
+nb_precision <- matrix[2,2]/sum(matrix[,2]) # precision = TP / (TP + FP)
+nb_f1 <- 2*(nb_recall*nb_precision)/(nb_recall + nb_precision)
+
+# print
+cat(
+  "Baseline Accuracy: ", baseline_acc, "\n",
+  "Accuracy:",  nb_acc, "\n",
+  "Recall:",  nb_recall, "\n",
+  "Precision:",  nb_precision, "\n",
+  "F1-score:", nb_f1
+)
+
+```
+Document frequency" means that the class priors will be taken from the relative proportions of the class documents used in the training set
+```{r 4b}
+
+nb_model_2 <- textmodel_nb(train_dfm, train_set$label, smooth = 1, prior = "docfreq")
+predicted_label_docfreq <- predict(nb_model_2, newdata = test_dfm)
+seed = 231
+# get confusion matrix
+matrix_2 <- table(test_set$label, predicted_label_docfreq)
+matrix_2
+nb_acc_2 <- sum(diag(matrix_2))/sum(matrix_2) # accuracy = (TP + TN) / (TP + FP + TN + FN)
+nb_recall_2 <- matrix_2[2,2]/sum(matrix_2[2,]) # recall = TP / (TP + FN)
+nb_precision_2 <- matrix_2[2,2]/sum(matrix[,2]) # precision = TP / (TP + FP)
+nb_f1_2 <- 2*(nb_recall_2*nb_precision_2)/(nb_recall_2 + nb_precision_2)
+
+# print
+cat(
+  "Baseline Accuracy: ", baseline_acc, "\n",
+  "Accuracy:",  nb_acc_2, "\n",
+  "Recall:",  nb_recall_2, "\n",
+  "Precision:",  nb_precision_2, "\n",
+  "F1-score:", nb_f1_2
+)
+
+```
+less common words, excude each other? negative words sedom show positive
+```{r 4c}
+seed = 231
+nb_model_3 <- textmodel_nb(train_dfm, train_set$label, smooth = 0, prior = "uniform")
+predicted_label_nosmooth <- predict(nb_model_3, newdata = test_dfm)
+
+# get confusion matrix
+matrix_3 <- table(test_set$label, predicted_label_nosmooth)
+matrix_3
+nb_acc_3 <- sum(diag(matrix_3))/sum(matrix_3) # accuracy = (TP + TN) / (TP + FP + TN + FN)
+nb_recall_3 <- matrix_3[2,2]/sum(matrix_3[2,]) # recall = TP / (TP + FN)
+nb_precision_3 <- matrix_3[2,2]/sum(matrix_3[,2]) # precision = TP / (TP + FP)
+nb_f1_3 <- 2*(nb_recall_3*nb_precision_3)/(nb_recall_3 + nb_precision_3)
+
+# print
+cat(
+  "Baseline Accuracy: ", baseline_acc, "\n",
+  "Accuracy:",  nb_acc_3, "\n",
+  "Recall:",  nb_recall_3, "\n",
+  "Precision:",  nb_precision_3, "\n",
+  "F1-score:", nb_f1_3
+)
+```
+4d.stars rating 
+
+5a, remove punct and to lower each word
+```{r 5a}
+library(corpus)
+library(tm)
+
+train <- yelp[yelp$anchor == "positive" | yelp$anchor == "negative", ] 
+train <- select(train, 'text', 'anchor')
+train$text<- gsub('[[:punct:] ]+' ,' ',tolower(train$text))
+train$text<-gsub('[[:digit:]]+', '', train$text)
+train$text<-gsub("\r?\n|\r ", '', train$text)
+train$text<-gsub('\\b\\w{1,2}\\b','',train$text)
+split_stemmed_words<-text_tokens(train$text,stemmer = "en")
+all_words <- data.frame(anchor = rep(train$anchor, sapply(split_stemmed_words, length)), words = unlist(split_stemmed_words))
+
+reference<- all_words[!duplicated(all_words$words),]
+reference$words<- as.character(reference$words)
+reference$words<-removeWords(reference$words, stopwords("english")) 
+reference <-reference[reference$words!="",]
+
+pos_words <-all_words[all_words$anchor == "positive",]$words
+neg_words <-all_words[all_words$anchor == "negative",]$words
+n_pos <- length(pos_words)
+n_neg <- length(neg_words)
+
+for (row in 1:nrow(reference)) {
+    word = as.character(reference[row,'words'])
+    word = paste("\\b",word,"\\b",sep = '')
+    pos_frq = sum(str_count(pos_words, word))
+    neg_frq = sum(str_count(neg_words, word))
+    pos_prop = pos_frq/n_pos
+    neg_prop = neg_frq/n_neg
+    P_pos = pos_prop/(pos_prop+ neg_prop)
+    P_neg = neg_prop/(pos_prop+ neg_prop)
+    score = P_pos-P_neg
+    reference[row, 'wordscores'] <- score
+    }
+
+#reference
+```
+```{r 5a_extreme_words}
+
+unlist(reference[order(-reference$wordscores),][1:100,]$words)
+unlist(reference[order(reference$wordscores),][1:100,]$words)
+```
+```{r 5b_apply_model}
+test <- yelp[yelp$anchor == "neutral", ] 
+test <- select(test, 'text', 'anchor','stars')
+test$text<- gsub('[[:punct:] ]+' ,' ',tolower(test$text))
+test$text<-gsub('[[:digit:]]+', '', test$text)
+test$text<-gsub("\r?\n|\r ", '', test$text)
+test$text<-gsub('\\b\\w{1,2}\\b','',test$text)
+split_stemmed_words<-text_tokens(test$text,stemmer = "en")
+all_words <- data.frame(anchor = rep(test$anchor, sapply(split_stemmed_words, length)), words = unlist(split_stemmed_words))
+
+for (row in 1:nrow(test)) {
+  s = 0
+  text <- test[row,'text']
+  split_words<- unlist(text_tokens(text,stemmer = "en"))
+  for (word in split_words){
+    if (word %in% reference$words){
+      wordscore <- reference[as.character(reference$words) == word,]$wordscores
+      word_frq <- sum(str_count(split_words, word))
+      doc_len <- length(split_words)
+      s <- (word_frq/doc_len)*wordscore +s
+    }}
+  test[row, 'wordscores estimate'] <- s
+  }
+```
+```{r 5b_RankSum}
+test$PredictedRank[order(test["wordscores estimate"],decreasing = TRUE)] <- 1:nrow(test)
+test$TureRank[order(test$stars,decreasing = TRUE)] <- 1:nrow(test)
+test<-test[order(as.numeric(rownames(test))), ]
+RankSum_wordscores=0
+for (row in 1:nrow(test)) {
+  difference = abs(test[row, 'PredictedRank'] - test[row, 'TureRank'])
+  RankSum_wordscores = RankSum_wordscores + difference
+  }
+RankSum_wordscores
+RankSum_dictionaries
+```
+
+
+6a, NB:fast, simple, accurate, efficient
+```{r 6B}
+library(caret)
+library(quanteda)
+library(dplyr)
+
+
+yelp_svm <- yelp[1:1000,]
+yelp_dfm <- dfm(yelp_svm$text, stem = TRUE, remove_punct = TRUE, remove = stopwords("english")) %>% convert("matrix")
+set.seed(411328)
+baseline_acc <- max(prop.table(table(yelp_svm$label)))
+print("Baseline Accuracy: ")
+baseline_acc
+
+trctrl <-trainControl(method="cv", number=5)
+P=c(0.9,0.8,0.7,0.6,0.5,0.4,0.3,0.2,0.1)
+Accuracy <- list()
+for (p in P){
+  ids_train <- createDataPartition(1:nrow(yelp_dfm), p = p, list = FALSE, times = 1)
+  train_x <- yelp_dfm[ids_train, ] %>% as.data.frame() # train set data
+  train_y <- yelp_svm$label[ids_train] %>% as.factor()  # train set labels
+  test_x <- yelp_dfm[-ids_train, ]  %>% as.data.frame() # test set data
+  test_y <- yelp_svm$label[-ids_train] %>% as.factor() # test set labels
+  svm_mod_linear <- train(x = train_x,
+                          y = train_y,
+                          method = "svmLinear",
+                          trControl = trctrl)
+  svm_linear_pred <- predict(svm_mod_linear, newdata = test_x)
+  svm_linear_cmat <- confusionMatrix(svm_linear_pred, test_y)
+  Accuracy <- c(Accuracy,svm_linear_cmat$overall[["Accuracy"]])
+  
+  cat(
+    "Training proportion:" , p*100, "%\n",
+    "Testing proportion:", (1-p)*100, "%\n",
+    "SVM-Linear Accuracy:",  svm_linear_cmat$overall[["Accuracy"]],"%\n")
+}
+y = unlist(Accuracy)
+x = P
+plot(x,y, type="l", col="pink", lwd=2, ylab="SVM-Linear Accuracy", xlab="Training set proportion", main="Accuracy vs. Traning size")
+
+```
+So, the linear kernel works fine if your dataset if linearly separable; however, if your dataset isn't linearly separable, a linear kernel isn't going to cut it (almost in a literal sense ;)).
+```{r 6b}
+ids_train <- createDataPartition(1:nrow(yelp_dfm), p = 0.8, list = FALSE, times = 1)
+train_x <- yelp_dfm[ids_train, ] %>% as.data.frame() # train set data
+train_y <- yelp_svm$label[ids_train] %>% as.factor()  # train set labels
+test_x <- yelp_dfm[-ids_train, ]  %>% as.data.frame() # test set data
+test_y <- yelp_svm$label[-ids_train] %>% as.factor() # test set labels
+svm_mod_linear <- train(x = train_x,
+                          y = train_y,
+                          method = "svmLinear",
+                          trControl = trctrl)
+svm_linear_pred <- predict(svm_mod_linear, newdata = test_x)
+svm_linear_cmat <- confusionMatrix(svm_linear_pred, test_y)
+  
+svm_mod_radial <- train(x = train_x,
+                          y = train_y,
+                          method = "svmRadial",
+                          trControl = trctrl)
+  
+svm_radial_pred <- predict(svm_mod_radial, newdata = test_x)
+svm_radial_cmat <- confusionMatrix(svm_radial_pred, test_y)
+
+cat(
+    "Training proportion:" , 80, "%\n",
+    "Testing proportion:", 80, "%\n",
+    "SVM-Linear Accuracy:",  svm_linear_cmat$overall[["Accuracy"]], "\n",
+    "SVM-Radial Accuracy:",  svm_radial_cmat$overall[["Accuracy"]])
+```
+
+
+```{r 7a}
+
+library(randomForest)
+yelp_rf <- yelp[1:500,]
+yelp_rf  <- select (yelp_rf, 'text', 'label')
+
+set.seed(2019)
+prop_train <- 0.8
+index <- 1:nrow(yelp_rf)
+yelp_rf$text <- as.character(yelp_rf$text)
+train_index <- sample(index, ceiling(prop_train*length(index)), replace = FALSE)
+test_index <- index[train_index]
+train_set <- yelp_rf[train_index,]
+test_set <- yelp_rf[test_index,]
+train_dfm <- dfm(train_set$text, stem = TRUE, remove_punct = TRUE, remove = stopwords("english"))
+test_dfm <- dfm(test_set$text, stem = TRUE, remove_punct = TRUE, remove = stopwords("english"))
+test_dfm <- dfm_match(test_dfm, features = featnames(train_dfm))
+train_dfm  <- train_dfm %>% convert("matrix")
+test_dfm <- test_dfm%>% convert("matrix")
+```
+```{r 7b}
+train_set$label <- as.factor(train_set$label)
+rf_model<- randomForest(train_dfm,train_set$label , importance=TRUE)
+rf_model
+importance <- importance(rf_model)
+import_df<- as.data.frame(importance)
+import_df[order(-import_df$MeanDecreaseGini),][1:10,]
+
+
+```
+
+```{r 7c}
+predTest <- predict(rf_model, test_dfm , type = "class")
+# Checking classification accuracy
+rf_cmat <- table(predTest, test_set$label)  
+rf_cmat
+
+
+rf_acc <- sum(diag(rf_cmat))/sum(rf_cmat) # accuracy = (TP + TN) / (TP + FP + TN + FN)
+rf_recall <- rf_cmat[2,2]/sum(rf_cmat[2,]) # recall = TP / (TP + FN)
+rf_precision <- rf_cmat[2,2]/sum(rf_cmat[,2]) # precision = TP / (TP + FP)
+rf_f1 <- 2*(rf_recall*rf_precision )/(rf_recall + rf_precision)
+
+baseline_acc <- max(prop.table(table(test_set$label)))
+# print
+cat(
+  "Baseline Accuracy: ", baseline_acc, "\n",
+  "Accuracy:",  rf_acc, "\n",
+  "Recall:",  rf_recall, "\n",
+  "Precision:",  rf_precision, "\n",
+  "F1-score:", rf_f1
+)
+
+
+```
+
+```{r 7d}
+mtrys <- c(0.5*sqrt(nfeat(as.dfm(test_dfm))),1.5*sqrt(nfeat(as.dfm(test_dfm))))
+
+for(m in mtrys){
+  rf_model<- randomForest(train_dfm,train_set$label,mtry=m, importance=TRUE)
+  predTest <- predict(rf_model, test_dfm , type = "class")
+  rf_cmat <- table(predTest, test_set$label)  
+  rf_cmat
+  rf_acc <- sum(diag(rf_cmat))/sum(rf_cmat) # accuracy = (TP + TN) / (TP + FP + TN + FN)
+  rf_recall <- rf_cmat[2,2]/sum(rf_cmat[2,]) # recall = TP / (TP + FN)
+  rf_precision <- rf_cmat[2,2]/sum(rf_cmat[,2]) # precision = TP / (TP + FP)
+  rf_f1 <- 2*(rf_recall*rf_precision )/(rf_recall + rf_precision)
+  # print
+  cat(
+    "myrys:", m, "\n",
+    "Accuracy:",  rf_acc, "\n",
+    "Recall:",  rf_recall, "\n",
+    "Precision:",  rf_precision, "\n",
+    "F1-score:", rf_f1)
+    
+  }
+
+
+```

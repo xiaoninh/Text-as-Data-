@@ -1,0 +1,386 @@
+---
+title: "Text As Data HW1"
+author: "XH1163"
+date: "2/28/2019"
+output:
+  word_document: default
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1.
+```{r,cache=TRUE}
+rm(list = ls())
+library(quanteda)
+library(quanteda.corpora)
+library(dplyr)
+library(ggplot2)
+data("data_corpus_inaugural")
+reagan_text <- texts(corpus_subset(data_corpus_inaugural, President == "Reagan"))
+reagan_tokens <-quanteda::tokens(reagan_text, remove_punct = TRUE) 
+```
+a. The TTR for 1981-Reagan is 0.3680099,the TTR for 1985-Reagan is 0.3568643.
+```{r}
+num_tokens <- lengths(reagan_tokens)
+num_types <- quanteda::ntype(reagan_tokens)
+reagan_TTR <- num_types / num_tokens
+head(reagan_TTR)
+```
+b. Based on the document feature matrix of the two speeches with punctuation removed,
+the cosine similarity/distance between the two documents is 0.9562928, which is pretty similar as it is close to 1.
+```{r}
+regan_dfm <- quanteda::dfm(reagan_text, remove_punct = TRUE,tolower = FALSE)
+regan_similarity<- quanteda::textstat_simil(regan_dfm, margin = "documents", method = "cosine")
+as.matrix(regan_similarity)
+```
+2. a Stemming the words
+(i) Theoretical argument: Stemming the words should lower the TTR of each document because it lowers the type(unique tokens) of the documents. It should also increase a little of the similarity of the two documents as the uniques tokens decrease.
+(ii) After stemming, the TTR for 1981-Reagan is 0.3322368, the TTR for 1985-Reagan is 0.3178627, which are both slightly lower than the originals(with a 0.05 descrease).
+(iii) After stemming, the cosine similarity/distance between the two documents is 0.956706, which is almost the same as the original(with a 0.0004 inscrease). 
+```{r}
+library(quanteda)
+#(ii)
+reagan_tokens_stemming <- tokens_wordstem(reagan_tokens, language = quanteda_options("language_stemmer"))
+num_tokens_stemming <- lengths(reagan_tokens_stemming )
+num_types_stemming <- ntype(reagan_tokens_stemming )
+reagan_TTR_stemming <- num_types_stemming / num_tokens_stemming
+head(reagan_TTR_stemming)
+# (iii)
+regan_dfm_stemming <- dfm(reagan_text, remove_punct = TRUE,stem = TRUE,tolower = FALSE)
+regan_similarity_stemming<- textstat_simil(regan_dfm_stemming, margin = "documents", method = "cosine")
+as.matrix(regan_similarity_stemming)
+```
+2.b Removing stop words
+(i) Theoretical argument: Removing stop words should increase the TTR of each document because it lowers the total number of tokens of the documents. It should also lower the similarity of the two documents since many similarities are because of the use of same stop words.
+(ii) After removing stop words, the TTR for 1981-Reagan is 0.6608544, the TTR for 1985-Reagan is 0.6059908 , which are both much higher than the originals(amlost doble).
+(iii) After stemming, the cosine similarity/distance between the two documents is 0.6685686, which is much lower than the the original(0.95). 
+```{r}
+# (ii)
+reagan_tokens_stopwords <- tokens_remove(reagan_tokens, stopwords("english"))
+num_tokens_stopwords <- lengths(reagan_tokens_stopwords )
+num_types_stopwords <- ntype(reagan_tokens_stopwords)
+reagan_TTR_stopwords <- num_types_stopwords / num_tokens_stopwords
+head(reagan_TTR_stopwords)
+# (iii)
+regan_dfm_stopwords <- dfm(reagan_text, remove_punct = TRUE,tolower = FALSE,remove=stopwords("english"))
+regan_similarity_stopwords<- textstat_simil(regan_dfm_stopwords, margin = "documents", method = "cosine")
+as.matrix(regan_similarity_stopwords)
+```
+2.c Converting all words to lowercase
+(i) Theoretical argument: Converting all words to lowercase should decrease the TTR of each document because it decrease the total number of type of the documents, which should also increase the similarity of the two documents.
+(ii) After converting all words to lowercase, the TTR for 1981-Reagan is 0.3466283, the TTR for 1985-Reagan is 0.3377535, which are both slightly lower than the originals.
+(iii) After stemming, the cosine similarity/distance between the two documents is 0.9592961, which is almost the same as much the original(with a 0.003 increase). 
+```{r}
+reagan_tokens_lower <- tokens_tolower(reagan_tokens) 
+num_tokens_lower <- lengths(reagan_tokens_lower)
+num_types_lower <- ntype(reagan_tokens_lower)
+reagan_TTR_lower <- num_types_lower / num_tokens_lower
+head(reagan_TTR_lower)
+# (iii)
+#tolower is defaut true for dfm
+regan_dfm_lower <- dfm(reagan_text, remove_punct = TRUE)
+regan_similarity_lower<- textstat_simil(regan_dfm_lower, margin = "documents", method = "cosine")
+as.matrix(regan_similarity_lower)
+```
+2.d Does tf-idf weighting make sense here?
+
+tf-idf does NOT make sense in this case because the number of total documents is too few (only 2), and TF-IDF uses to the ratio of between term frequency in one document and the term frequency in all documents. When there are only 2 documents, the term frequency in all documents could be not very diffenret from the term frequency in one documents.
+```{r}
+weighted_regan_dfm <- dfm_tfidf(regan_dfm,scheme_tf = "prop") 
+topfeatures(weighted_regan_dfm)
+regan_similarity_weighted<- textstat_simil(weighted_regan_dfm, method = "cosine")
+as.matrix(regan_similarity_weighted)
+```
+3. The MTLD for 1981-Reagan is 69.33 with TTR limit at 0.72; the MTLD for 1985-Reagan is 83.67 with TTR limit at 0.72.
+```{r}
+library(koRpus)
+library(koRpus.lang.en)
+tokenized_1981 <- tokenize(reagan_text[1],lang='en',format = 'obj')
+MTLD(tokenized_1981,factor.size = 0.72, min.tokens = 25)
+tokenized_1985 <- tokenize(reagan_text[2],lang='en',format = 'obj')
+MTLD(tokenized_1985,factor.size = 0.72, min.tokens = 25)
+```
+4. I preprocessed the headlines by removing punctuation and single length characters because they should not be taken into consideration when calculating the similarity between the two sentences, and I also converted all words to lowercase.
+a. The Euclidean distance is 4.123106.
+b. The Manhattan distance is 15.
+c. The cosine similarity is 0.4264014.
+
+```{r}
+rm(list = ls())
+headline_1 <- "Trump Says He’s ‘Not Happy’ With Border Deal, but Doesn’t Say if He Will Sign It."
+headline_2 <- "Trump ‘not happy’ with border deal, weighing options for building wall."
+headline_1 <- gsub('\\b\\w{1}\\b','',headline_1)
+headline_2 <- gsub('\\b\\w{1}\\b','',headline_2)
+headline_1 <- gsub('[[:punct:] ]+',' ',tolower(headline_1))
+headline_2<- gsub('[[:punct:] ]+',' ',tolower(headline_2))
+headline_1_list <- strsplit(headline_1, " ")[[1]]
+headline_2_list <- strsplit(headline_2, " ")[[1]]
+headlines <- unique(c(headline_1_list,headline_2_list))
+headline_1_list
+headline_2_list 
+dfm_1 = rep(0,length(headlines))
+dfm_2 = rep(0,length(headlines))
+for (i in seq(1, length(headlines))){ 
+  reg_ex <- paste(paste("^",headlines[i],sep=''),"$",sep='')
+  dfm_2[i] <- length(grep(reg_ex,headline_2_list))
+  dfm_1[i] <- length(grep(reg_ex,headline_1_list))
+}
+print("dfm for headline 1: ")
+dfm_1
+print("dfm for headline 2: ")
+dfm_2
+print("Euclidean distance:")
+Euclidean = sqrt(sum((dfm_1 - dfm_2) ^ 2))
+Euclidean
+print("Manhattan distance:")
+Manhattan = sum(abs(dfm_1 - dfm_2))
+Manhattan
+print("Cosine Similarity:")
+cos = sum((dfm_1*dfm_2))/(sqrt(sum(dfm_1^2))*sqrt(sum(dfm_2^2)))
+cos
+```
+5.a,b Gather books data and organize into one data frame.
+```{r,cache=TRUE}
+rm(list = ls())
+library(gutenbergr)
+library(dplyr)
+authors = c("Austen, Jane","Twain, Mark","Joyce, James","Dickens, Charles")
+book_id =list()
+for (a in authors){
+  x<-gutenberg_works() %>% filter(author == a)
+  book_id <- c(book_id,unlist(x[1:4,]['gutenberg_id'][[1]]))}
+books <- data.frame()
+for (id in book_id){
+  book <- gutenberg_download(id,meta_fields = c("title","author"))
+  text <- book[10:510,]
+# I did not take the first 10 lines because they are mostly title,author name and other information regarding the book
+  books <- rbind(books, text)}
+authors <- books
+books <- aggregate(books['text'],books['title'],paste,collapse=' ')
+authors <-aggregate(authors['author'],authors['title'],unique)
+books_data <- merge(authors, books, by='title')
+```
+5.c I drop the punctation, numbers, stopwords, symbols in the pre-processing because authors' use of punctuations,numbers, symbols,and stopwords are less likely to represent their writing styles. I also stemmed words to reduce replications. 
+The percentile with the best prediction rate is 70.
+The rate of incorrectly predicted speakers of held-out texts table is displayed in the output; we can see 70 percentile[,5] has the most 0% within the ten cross-validations.
+
+```{r, cache = TRUE}
+library(stylest)
+Encoding(books_data$text) <-"latin1"
+my_filter <- corpus::text_filter(drop_punct = TRUE,drop_number = TRUE,drop = stopwords("english"),
+                                 drop_symbol = TRUE, stemmer = "en")  # pre-processing choices
+set.seed(411)
+vocabs<- stylest_select_vocab(books_data$text, books_data$author,
+                                     filter=my_filter, smooth = 1, nfold = 10,
+                                     cutoff_pcts = c(15, 25, 40, 55, 70, 85, 99))
+
+vocabs$cutoff_pct_best
+vocabs$miss_pct
+```
+
+5.(d)The top 5 terms most used by each author are displayed in the output table. Some of them make sense like Mr, man, sir, one, mother, etc. But some of them are more likely showing up in the titles not in the texts, such as "chapter," and some single length characters are showing up too which do not make a lot of sense after drop stopwords, symbols, stemming and everything.
+
+```{r,cache = TRUE,results = 'hide'}
+vocab_subset <- stylest_terms(books_data$text, books_data$author,vocabs$cutoff_pct_best,filter=my_filter) 
+style_model <- stylest_fit(books_data$text, books_data$author, terms = vocab_subset, filter = my_filter)
+
+inful_terms <- head(stylest_term_influence(style_model, books_data$text, books_data$author))
+
+str(style_model)
+authors <- unique(books_data$author)
+term_usage <- style_model$rate
+ratio_vectors <- lapply(authors, function(x) head(term_usage[x,][order(-term_usage[x,])],n=5)) %>% setNames(authors)
+```
+```{r}
+ratio_vectors
+```
+5.(e) After combining the top words and their ratios of Charles Dickens and Mark Twain, the words with the top ration is mr, and then chapter, and then tom and one. The ratios of the top words between these two authors are not very different. In the top five ratios after combining, three of them are from Charles Dickens, and two of them are from Mark Twain.
+```{r}
+two_authors<- ratio_vectors[1:2]
+ratios <- list()
+terms <- list()
+for (i in seq(1,length(two_authors))){
+  for (x in seq(1,5)){
+    ratios <-c(ratios,unlist(two_authors[i])[[x]])
+    terms <-c(terms,unlist(strsplit(names(unlist(two_authors[i])[x]), '[.]'))[2])}}
+sort_ratios <- sort(unlist(ratios),decreasing = TRUE)
+top_terms =list()
+for (i in sort_ratios){
+  index <- match(i,unlist(ratios))
+  top_terms <- c(top_terms,terms[index])}
+head(unlist(top_terms),n=5)
+```
+5.(f)Austen, Jane is the most likely author.
+```{r}
+library(stylest)
+mystery <- readRDS("mystery_excerpt.rds")
+pred <- stylest_predict(style_model, mystery)
+pred$predicted
+pred$log_probs
+```
+6.a
+```{r,cache=TRUE}
+rm(list = ls())
+library(sophistication)
+snippetData <- snippets_make(data_corpus_inaugural, nsentence = 1, minchar = 150, maxchar = 350)
+snippetData <- snippets_clean(snippetData)
+head(snippetData,n=10)
+```
+6.b The text of the 10 gold paris are printed as below. When read the text myself, from 1to10, the easier one are A,A,A,A,B,B,A,B,B,B, which are in aggrement with 100% of the automated classification. But if  a different judgment occur, it could because of personal interests in differnet topics, persoanl reading styles and varied vocabulary.  
+```{r}
+library(sophistication)
+set.seed(97328)
+snippetPairsAll <- pairs_regular_make(snippetData[sample(1:nrow(snippetData), 1000), ])
+gold <- pairs_gold_make(snippetPairsAll, n.pairs = 10)
+gold[, c(3, 6,12)]
+```
+7. Zipf's law states that given a large sample of words used, the frequency of any word is inversely proportional to its rank in the frequency table. So word number n has a frequency proportional to 1/n.
+Based on the plot, we can see it is true in the two books of James Joyce and Mark Twain, that each most frequent word occurs about as half often as the previous most frequent word.
+```{r,cache = TRUE}
+two_books <- gutenberg_download(c(4217,74),meta_fields = c("title","author"))
+two_books <- aggregate(two_books['text'],two_books['title'],paste,collapse=' ')
+books_corpus <- corpus(two_books,text_field = "text")
+books_dfm <- dfm(books_corpus,stem = TRUE, remove = stopwords("english"), remove_punct = TRUE)
+plot(log10(1:100), log10(topfeatures(books_dfm, 100)),
+     xlab = "log10(rank)", ylab = "log10(frequency)", main = "Top 100 Words in the two books from James Joyce and Mark Twain")
+```
+8. After removing the punctuation, and numbers in the tokens to prevent creating unnecessary types, the best value is of b is 0.44 while b∈(0.4, 0.6) and k =44. k * (T)^b using the best b 0.44 equal to  8491.421, which is 447.5 away from the real M(number of types) 8939.
+```{r,cache = TRUE}
+tokens <- quanteda::tokens(books_corpus,remove_punct = TRUE,remove_symbols= TRUE,remove_numbers= TRUE) 
+Tee <- sum(lengths(tokens))
+M <- nfeat(books_dfm)  # number of features = number of types
+k <- 44
+B <-c(0.4,0.41,0.41,0.43,0.44,0.45,0.46,0.47,0.48,0.49, 0.5,0.51,0.52,0.53,0.54,0.55,0.56,0.57,0.58,0.59,0.6) # b ∈ (0.4, 0.6)
+best<-0
+m<-0
+smallest_d <- 100000
+for (b in B){
+  m = k * (Tee)^b
+  difference <- abs(M-m)
+  if (difference < smallest_d){
+    smallest_d <- difference
+    best <-b}}
+  
+print("Best b:")
+best
+print("k * (T)^b :") 
+k * (Tee)^best
+print("M:")
+M
+print("Differnce from the real M")
+smallest_d
+```
+9. After comparing a few keywords relevant to religion(relig*, god,jesus,bible, christ) in the two books from Mark Twain and James Joyce, I found two books mention relatively same amount of "religion." But for "god," "jesus",and "christ", James Joyce mentioned much more than Mark Twain. Mark Twain almost never uses "jesus" nor "christ" in his book, and only a few times of "god", which James Joyce have pretty regular use of them. Thus James Joyce‘s writing is more likely to be related to Christianity. Both authors don't have a lot of use of "bible," but Mark Twain mentioned 9 times, and James Joyce only 1 time.
+```{r, echo=TRUE, results='hide'}
+rm(list = ls())
+library(gutenbergr)
+James_Joyce <- gutenberg_download(4217,meta_fields = c("title","author"))
+Mark_Twain <- gutenberg_download(74,meta_fields = c("title","author"))
+James_Joyce  <- aggregate(James_Joyce ['text'],James_Joyce ['title'],paste,collapse=' ')
+Mark_Twain  <- aggregate(Mark_Twain ['text'],Mark_Twain ['title'],paste,collapse=' ')
+Twain_corpus <- corpus(Mark_Twain ,text_field = "text")
+Joyce_corpus <- corpus(James_Joyce ,text_field = "text")
+kwic(Twain_corpus , pattern = "^relig*", valuetype = "regex", window = 6)
+kwic(Joyce_corpus , pattern = "^relig*", valuetype = "regex", window = 6)
+kwic(Twain_corpus , pattern = "^god", valuetype = "regex", window = 6)
+kwic(Joyce_corpus , pattern = "^god", valuetype = "regex", window = 6)
+kwic(Twain_corpus , pattern = "^jesus", valuetype = "regex", window = 6)
+kwic(Joyce_corpus , pattern = "^jesus", valuetype = "regex", window = 6)
+kwic(Twain_corpus , pattern = "^bible*", valuetype = "regex", window = 6)
+kwic(Joyce_corpus , pattern = "^bible*", valuetype = "regex", window = 6)
+kwic(Twain_corpus , pattern = "^christ*", valuetype = "regex", window = 6)
+kwic(Joyce_corpus , pattern = "^christ*", valuetype = "regex", window = 6)
+```
+10.a,b
+The ggplot point estimates of the data before and after sentence-level bootstrap are in the output.
+The Mean Fleisch Score by Year does not have a lot of differences in the two plots. However, with the variance bars in after bootstrapped, we can see that older documents tend to have larger variances and also larger range in their Mean Fleisch Score.
+```{r, cache = TRUE}
+rm(list = ls())
+library(pbapply)
+library(dplyr)
+library(ggplot2)
+uk_con <- corpus_subset(data_corpus_ukmanifestos, Party == "Con")
+#sentence - level
+uk_con_sentence <- corpus_reshape(uk_con, to = "sentences")
+
+# convert corpus to df 
+uk_con_df <- uk_con_sentence$documents %>% select(texts, Party, Year) %>% mutate(Year = as.integer(Year))
+
+# filter out any NAs
+uk_con_df <- na.omit(uk_con_df)
+
+# remove sentences that start with number and sentences that are shorter than 15 characters
+index1 <- with(uk_con_df, grepl("^[a-zA-Z 0-9~!@#$%^&*+=_]{15,}", texts))
+index2 <- with(uk_con_df, grepl("^[^0-9]", texts))
+uk_con_df <- uk_con_df[index1 & index2,]
+
+years = unique(uk_con_df$Year)
+
+# mean Flesch statistic per Year
+flesch_point <- uk_con_df$texts %>% textstat_readability(measure = "Flesch") %>% 
+  group_by(uk_con_df$Year) %>% summarise(mean_flesch = mean(Flesch)) %>% 
+  setNames(c("Year", "mean")) %>% arrange(Year)
+
+# ggplot point estimate
+ggplot(flesch_point, aes(y = mean, x = Year, colour = Year)) +
+  geom_point() +
+  coord_flip() + theme_bw() + scale_y_continuous(breaks=seq(floor(min(flesch_point$mean)), ceiling(max(flesch_point$mean)), by = 2)) +
+  xlab("") + ylab("Mean Fleisch Score by Year") + theme(legend.position = "none")
+
+# We will use a loop to bootstrap a sample of texts and subsequently calculate standard errors
+iters <- 10
+
+# build function to be used in bootstrapping
+boot_flesch <- function(year_data){
+  N <- nrow(year_data)
+  bootstrap_sample <- sample_n(year_data, N, replace = TRUE)
+  readability_results <- textstat_readability(bootstrap_sample$texts, measure = "Flesch")
+  return(mean(readability_results$Flesch))}
+
+# apply function to each party
+boot_flesch_by_year <- pblapply(years, function(x){
+  sub_data <- uk_con_df %>% filter(Year == x)
+  output_flesch <- lapply(1:iters, function(i) boot_flesch(sub_data))
+  return(unlist(output_flesch))
+})
+names(boot_flesch_by_year) <- years
+
+# compute mean and std.errors
+year_means <- lapply(boot_flesch_by_year, mean) %>% unname() %>% unlist()
+year_ses <- lapply(boot_flesch_by_year, sd) %>% unname() %>% unlist() 
+
+# Plot results--party
+plot_dt <- tibble(year = years, mean = year_means, ses = year_ses)
+
+# confidence intervals
+interval1 <- -qnorm((1-0.9)/2)   # 90% multiplier
+interval2 <- -qnorm((1-0.95)/2)  # 95% multiplier
+
+# ggplot point estimate + variance
+ggplot(plot_dt, aes(colour = year)) +
+  geom_linerange(aes(x = year, ymin = mean - ses*interval1, ymax = mean + ses*interval1), lwd = 1, 
+                 position = position_dodge(width = 1/2)) +
+  geom_pointrange(aes(x = year, y = mean, ymin = mean - ses*interval2, ymax = mean + ses*interval2), 
+                  lwd = 1/2, position = position_dodge(width = 1/2), shape = 21, fill = "WHITE") +
+  coord_flip() + theme_bw() + scale_y_continuous(breaks=seq(floor(min(plot_dt$mean)), 
+                                                            ceiling(max(plot_dt$mean)), by = 2)) +
+  xlab("") + ylab("Mean Fleisch Score by Year with Variance ") + theme(legend.position = "none")
+```
+10.c The FRE scores and the Dale-Chall scores are in the output for each document. The correlation between  FRE and Dale-Chall scores is 0.5364108.
+```{r}
+scores <- merge(textstat_readability(texts(uk_con, groups = "Year"), "Flesch"), textstat_readability(texts(uk_con, groups = "Year"), "Dale.Chall"), by='document')
+scores
+
+all_readability_measures <- textstat_readability(uk_con, c("Flesch", "Dale.Chall"))
+readability_matrix <- cbind(all_readability_measures$Flesch, all_readability_measures$Dale.Chall)
+readability_cor <- cor(readability_matrix)
+rownames(readability_cor) <- c("Flesch", "Dale-Chall")
+colnames(readability_cor) <- c("Flesch", "Dale-Chall")
+readability_cor
+```
+
